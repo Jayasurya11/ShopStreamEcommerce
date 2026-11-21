@@ -1,0 +1,63 @@
+# Routes are listed in BOTH this file (local hosts) and api-gateway-docker.yml (container hosts).
+# Spring replaces a whole list from the higher-priority profile file, so each file must hold the full list.
+server.port: 8080
+spring:
+  security.oauth2.resourceserver.jwt:
+    issuer-uri: http://localhost:8180/realms/shopstream      # Keycloak realm
+  data.redis:
+    host: localhost
+    port: 6379
+  cloud.gateway.server.webflux:
+    default-filters:
+      - SecureHeaders                        # X-Content-Type-Options, X-Frame-Options, HSTS, ...
+      - name: Retry                          # retry idempotent reads if a service is briefly unavailable
+        args:
+          retries: 2
+          methods: GET
+          statuses: BAD_GATEWAY, SERVICE_UNAVAILABLE
+    globalcors:
+      cors-configurations:
+        '[/**]':
+          allowedOrigins: [ "http://localhost:5173" ]
+          allowedMethods: [ GET, POST, PATCH, DELETE, OPTIONS ]
+          allowedHeaders: "*"
+    routes:
+      - id: order-stream            # long-lived SSE connection: no rate limiter, no circuit breaker / timeout
+        uri: http://localhost:8081
+        predicates:
+          - Path=/api/v1/orders/stream
+      - id: orders
+        uri: http://localhost:8081
+        predicates:
+          - Path=/api/v1/orders/**
+        filters:
+          - name: RequestRateLimiter
+            args:
+              key-resolver: "#{@userKeyResolver}"
+              redis-rate-limiter.replenishRate: 5      # 5 requests/second per user
+              redis-rate-limiter.burstCapacity: 10
+              redis-rate-limiter.requestedTokens: 1
+          - name: CircuitBreaker
+            args:
+              name: ordersCb
+              fallbackUri: forward:/fallback/orders
+              statusCodes: "500,502,503"
+      - id: products
+        uri: http://localhost:8082
+        predicates:
+          - Path=/api/v1/products/**
+        filters:
+          - name: RequestRateLimiter
+            args:
+              key-resolver: "#{@userKeyResolver}"
+              redis-rate-limiter.replenishRate: 20
+              redis-rate-limiter.burstCapacity: 40
+              redis-rate-limiter.requestedTokens: 1
+          - name: CircuitBreaker
+            args:
+              name: inventoryCb
+              fallbackUri: forward:/fallback/inventory
+              statusCodes: "500,502,503"
+management:
+  server.port: 9080                        # actuator + Prometheus on an internal-only port
+  endpoints.web.exposure.include: health,info,gateway,prometheus

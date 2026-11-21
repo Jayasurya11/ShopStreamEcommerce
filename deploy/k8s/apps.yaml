@@ -1,0 +1,239 @@
+# Generated shape: one Deployment + Service per app, see deploy/k8s/README in the main README.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  labels: { app: api-gateway, part-of: shopstream }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: api-gateway } }
+  strategy: { rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  template:
+    metadata:
+      labels: { app: api-gateway, part-of: shopstream }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "9080", prometheus.io/path: /actuator/prometheus }
+    spec:
+      terminationGracePeriodSeconds: 45          # > spring.lifecycle.timeout-per-shutdown-phase (30s)
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: api-gateway
+          image: ghcr.io/your-org/shopstream-api-gateway:latest      # replaced by kustomize "images"
+          ports:
+            - { name: http, containerPort: 8080 }
+            - { name: mgmt, containerPort: 9080 }
+          env:
+            - { name: SPRING_PROFILES_ACTIVE, value: docker }   # reuses the container hostnames: postgres, kafka:29092, redis, keycloak, jaeger
+            - { name: CONFIG_SERVER_URL, value: "http://config-server:8888" }
+            - { name: DB_USER, valueFrom: { secretKeyRef: { name: shopstream-secrets, key: DB_USER } } }
+            - { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: shopstream-secrets, key: DB_PASSWORD } } }
+            - { name: CONFIG_USER, valueFrom: { secretKeyRef: { name: shopstream-secrets, key: CONFIG_USER } } }
+            - { name: CONFIG_PASSWORD, valueFrom: { secretKeyRef: { name: shopstream-secrets, key: CONFIG_PASSWORD } } }
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { memory: 768Mi }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          startupProbe:   { httpGet: { path: /actuator/health/liveness, port: 9080 }, periodSeconds: 5, failureThreshold: 36 }
+          livenessProbe:  { httpGet: { path: /actuator/health/liveness, port: 9080 }, periodSeconds: 10 }
+          readinessProbe: { httpGet: { path: /actuator/health/readiness, port: 9080 }, periodSeconds: 5 }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: api-gateway, labels: { app: api-gateway } }
+spec:
+  selector: { app: api-gateway }
+  ports: [ { name: http, port: 8080, targetPort: http } ]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service
+  labels: { app: order-service, part-of: shopstream }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: order-service } }
+  strategy: { rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  template:
+    metadata:
+      labels: { app: order-service, part-of: shopstream }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "9081", prometheus.io/path: /actuator/prometheus }
+    spec:
+      terminationGracePeriodSeconds: 45          # > spring.lifecycle.timeout-per-shutdown-phase (30s)
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: order-service
+          image: ghcr.io/your-org/shopstream-order-service:latest      # replaced by kustomize "images"
+          ports:
+            - { name: http, containerPort: 8081 }
+            - { name: mgmt, containerPort: 9081 }
+          env:
+            - { name: SPRING_PROFILES_ACTIVE, value: docker }   # reuses the container hostnames: postgres, kafka:29092, redis, keycloak, jaeger
+            - { name: CONFIG_SERVER_URL, value: "http://config-server:8888" }
+            - { name: DB_USER, valueFrom: { secretKeyRef: { name: shopstream-secrets, key: DB_USER } } }
+            - { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: shopstream-secrets, key: DB_PASSWORD } } }
+            - { name: CONFIG_USER, valueFrom: { secretKeyRef: { name: shopstream-secrets, key: CONFIG_USER } } }
+            - { name: CONFIG_PASSWORD, valueFrom: { secretKeyRef: { name: shopstream-secrets, key: CONFIG_PASSWORD } } }
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { memory: 768Mi }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          startupProbe:   { httpGet: { path: /actuator/health/liveness, port: 9081 }, periodSeconds: 5, failureThreshold: 36 }
+          livenessProbe:  { httpGet: { path: /actuator/health/liveness, port: 9081 }, periodSeconds: 10 }
+          readinessProbe: { httpGet: { path: /actuator/health/readiness, port: 9081 }, periodSeconds: 5 }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: order-service, labels: { app: order-service } }
+spec:
+  selector: { app: order-service }
+  ports: [ { name: http, port: 8081, targetPort: http } ]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-service
+  labels: { app: inventory-service, part-of: shopstream }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: inventory-service } }
+  strategy: { rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  template:
+    metadata:
+      labels: { app: inventory-service, part-of: shopstream }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "9082", prometheus.io/path: /actuator/prometheus }
+    spec:
+      terminationGracePeriodSeconds: 45          # > spring.lifecycle.timeout-per-shutdown-phase (30s)
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: inventory-service
+          image: ghcr.io/your-org/shopstream-inventory-service:latest      # replaced by kustomize "images"
+          ports:
+            - { name: http, containerPort: 8082 }
+            - { name: mgmt, containerPort: 9082 }
+          env:
+            - { name: SPRING_PROFILES_ACTIVE, value: docker }   # reuses the container hostnames: postgres, kafka:29092, redis, keycloak, jaeger
+            - { name: CONFIG_SERVER_URL, value: "http://config-server:8888" }
+            - { name: DB_USER, valueFrom: { secretKeyRef: { name: shopstream-secrets, key: DB_USER } } }
+            - { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: shopstream-secrets, key: DB_PASSWORD } } }
+            - { name: CONFIG_USER, valueFrom: { secretKeyRef: { name: shopstream-secrets, key: CONFIG_USER } } }
+            - { name: CONFIG_PASSWORD, valueFrom: { secretKeyRef: { name: shopstream-secrets, key: CONFIG_PASSWORD } } }
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { memory: 768Mi }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          startupProbe:   { httpGet: { path: /actuator/health/liveness, port: 9082 }, periodSeconds: 5, failureThreshold: 36 }
+          livenessProbe:  { httpGet: { path: /actuator/health/liveness, port: 9082 }, periodSeconds: 10 }
+          readinessProbe: { httpGet: { path: /actuator/health/readiness, port: 9082 }, periodSeconds: 5 }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: inventory-service, labels: { app: inventory-service } }
+spec:
+  selector: { app: inventory-service }
+  ports: [ { name: http, port: 8082, targetPort: http } ]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  labels: { app: payment-service, part-of: shopstream }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: payment-service } }
+  strategy: { rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  template:
+    metadata:
+      labels: { app: payment-service, part-of: shopstream }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "9083", prometheus.io/path: /actuator/prometheus }
+    spec:
+      terminationGracePeriodSeconds: 45          # > spring.lifecycle.timeout-per-shutdown-phase (30s)
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: payment-service
+          image: ghcr.io/your-org/shopstream-payment-service:latest      # replaced by kustomize "images"
+          ports:
+            - { name: http, containerPort: 8083 }
+            - { name: mgmt, containerPort: 9083 }
+          env:
+            - { name: SPRING_PROFILES_ACTIVE, value: docker }   # reuses the container hostnames: postgres, kafka:29092, redis, keycloak, jaeger
+            - { name: CONFIG_SERVER_URL, value: "http://config-server:8888" }
+            - { name: DB_USER, valueFrom: { secretKeyRef: { name: shopstream-secrets, key: DB_USER } } }
+            - { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: shopstream-secrets, key: DB_PASSWORD } } }
+            - { name: CONFIG_USER, valueFrom: { secretKeyRef: { name: shopstream-secrets, key: CONFIG_USER } } }
+            - { name: CONFIG_PASSWORD, valueFrom: { secretKeyRef: { name: shopstream-secrets, key: CONFIG_PASSWORD } } }
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { memory: 768Mi }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          startupProbe:   { httpGet: { path: /actuator/health/liveness, port: 9083 }, periodSeconds: 5, failureThreshold: 36 }
+          livenessProbe:  { httpGet: { path: /actuator/health/liveness, port: 9083 }, periodSeconds: 10 }
+          readinessProbe: { httpGet: { path: /actuator/health/readiness, port: 9083 }, periodSeconds: 5 }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: payment-service, labels: { app: payment-service } }
+spec:
+  selector: { app: payment-service }
+  ports: [ { name: http, port: 8083, targetPort: http } ]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: config-server
+  labels: { app: config-server, part-of: shopstream }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: config-server } }
+  strategy: { rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  template:
+    metadata:
+      labels: { app: config-server, part-of: shopstream }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8888", prometheus.io/path: /actuator/prometheus }
+    spec:
+      terminationGracePeriodSeconds: 45          # > spring.lifecycle.timeout-per-shutdown-phase (30s)
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: config-server
+          image: ghcr.io/your-org/shopstream-config-server:latest      # replaced by kustomize "images"
+          ports:
+            - { name: http, containerPort: 8888 }
+          env:
+            - { name: CONFIG_REPO, value: "file:/config-repo" }
+            - { name: CONFIG_USER, valueFrom: { secretKeyRef: { name: shopstream-secrets, key: CONFIG_USER } } }
+            - { name: CONFIG_PASSWORD, valueFrom: { secretKeyRef: { name: shopstream-secrets, key: CONFIG_PASSWORD } } }
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { memory: 768Mi }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          startupProbe:   { httpGet: { path: /actuator/health/liveness, port: 8888 }, periodSeconds: 5, failureThreshold: 36 }
+          livenessProbe:  { httpGet: { path: /actuator/health/liveness, port: 8888 }, periodSeconds: 10 }
+          readinessProbe: { httpGet: { path: /actuator/health/readiness, port: 8888 }, periodSeconds: 5 }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: config-repo, mountPath: /config-repo, readOnly: true }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - { name: config-repo, configMap: { name: config-repo } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: config-server, labels: { app: config-server } }
+spec:
+  selector: { app: config-server }
+  ports: [ { name: http, port: 8888, targetPort: http } ]

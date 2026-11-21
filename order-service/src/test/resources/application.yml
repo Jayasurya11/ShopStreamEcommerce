@@ -1,0 +1,13 @@
+# Replaces the production application.yml in tests: no config server, containers provide DB and Kafka.
+spring:
+  application.name: order-service
+  cloud.config:
+    enabled: false
+    import-check.enabled: false
+  kafka:
+    consumer:
+      group-id: order-service-it
+      auto-offset-reset: earliest
+    producer:
+      acks: all
+  threads.virtual.enabled: true

@@ -1,0 +1,28 @@
+# Shared by EVERY service. Service-specific files override these values.
+# No credentials live here: each service reads its own DB credentials from environment variables.
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      auto-offset-reset: earliest
+    producer:
+      acks: all
+      properties:
+        enable.idempotence: true
+    template.observation-enabled: true      # trace context travels inside Kafka messages
+    listener.observation-enabled: true
+  datasource.hikari:
+    maximum-pool-size: 10
+    connection-timeout: 5000
+  threads.virtual.enabled: true
+  lifecycle.timeout-per-shutdown-phase: 30s
+server.shutdown: graceful                   # finish in-flight requests before stopping (rolling deploys)
+management:
+  endpoint.health:
+    probes.enabled: true                    # /actuator/health/liveness and /readiness for Kubernetes
+    show-details: never
+  endpoints.web.exposure.include: health,info,refresh,prometheus
+  metrics.distribution.percentiles-histogram.http.server.requests: true
+  tracing.sampling.probability: 1.0         # lower to 0.1 in production
+  opentelemetry.tracing.export.otlp.endpoint: http://localhost:4318/v1/traces
+  otlp.metrics.export.enabled: false        # metrics are scraped by Prometheus instead of pushed

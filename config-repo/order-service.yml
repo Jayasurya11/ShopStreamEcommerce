@@ -1,0 +1,6 @@
+server.port: 8081
+spring:
+  datasource.url: jdbc:postgresql://localhost:5432/orders
+  kafka.consumer.group-id: order-service
+shop.outbox.poll-ms: 300
+management.server.port: 9081      # actuator + Prometheus on an internal-only port

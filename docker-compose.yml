@@ -1,0 +1,106 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}" }
+    ports: ["5432:5432"]
+    volumes:
+      - ./infra/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres"], interval: 5s, retries: 10 }
+
+  kafka:
+    image: apache/kafka:3.8.0
+    ports: ["9092:9092"]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,INTERNAL://:29092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    ports: ["8090:8080"]
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    depends_on: [kafka]
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: "${KEYCLOAK_ADMIN:-admin}"
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "${KEYCLOAK_ADMIN_PASSWORD:-admin}"
+      KC_HOSTNAME: http://localhost:8180            # tokens always carry this issuer
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"       # but containers may reach Keycloak as keycloak:8080
+    ports: ["8180:8080"]                            # admin console: http://localhost:8180 (admin / admin)
+    volumes: ["./infra/keycloak:/opt/keycloak/data/import:ro"]
+
+  jaeger:                       # distributed traces: http://localhost:16686
+    image: jaegertracing/all-in-one:latest      # pin a version in production
+    ports: ["16686:16686", "4318:4318"]         # UI, OTLP/HTTP
+
+  prometheus:                   # metrics + alert rules: http://localhost:9090
+    image: prom/prometheus:v2.55.1
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    ports: ["9090:9090"]
+
+  grafana:                      # dashboards: http://localhost:3000
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin}"
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3000:3000"]
+    depends_on: [prometheus, jaeger]
+
+  # Optional: run everything in containers:  docker compose --profile apps up --build
+  config-server:
+    profiles: ["apps"]
+    build: { context: ., args: { MODULE: config-server } }
+    environment: { CONFIG_BACKEND: "${CONFIG_BACKEND:-native}", CONFIG_REPO: "file:/config-repo", GIT_URI: "${GIT_URI:-}", GIT_BRANCH: "${GIT_BRANCH:-main}", GIT_USERNAME: "${GIT_USERNAME:-}", GIT_TOKEN: "${GIT_TOKEN:-}", CONFIG_USER: "${CONFIG_USER:-config}", CONFIG_PASSWORD: "${CONFIG_PASSWORD:-config-secret}" }
+    volumes: ["./config-repo:/config-repo:ro"]
+    ports: ["8888:8888"]
+  order-service:
+    profiles: ["apps"]
+    build: { context: ., args: { MODULE: order-service } }
+    environment: { SPRING_PROFILES_ACTIVE: docker, CONFIG_SERVER_URL: "http://config-server:8888", DB_USER: postgres, DB_PASSWORD: "${POSTGRES_PASSWORD:-postgres}", CONFIG_USER: "${CONFIG_USER:-config}", CONFIG_PASSWORD: "${CONFIG_PASSWORD:-config-secret}" }
+    restart: on-failure
+    depends_on: [config-server, postgres, kafka]
+  inventory-service:
+    profiles: ["apps"]
+    build: { context: ., args: { MODULE: inventory-service } }
+    environment: { SPRING_PROFILES_ACTIVE: docker, CONFIG_SERVER_URL: "http://config-server:8888", DB_USER: postgres, DB_PASSWORD: "${POSTGRES_PASSWORD:-postgres}", CONFIG_USER: "${CONFIG_USER:-config}", CONFIG_PASSWORD: "${CONFIG_PASSWORD:-config-secret}" }
+    restart: on-failure
+    depends_on: [config-server, postgres, kafka]
+  payment-service:
+    profiles: ["apps"]
+    build: { context: ., args: { MODULE: payment-service } }
+    environment: { SPRING_PROFILES_ACTIVE: docker, CONFIG_SERVER_URL: "http://config-server:8888", DB_USER: postgres, DB_PASSWORD: "${POSTGRES_PASSWORD:-postgres}", CONFIG_USER: "${CONFIG_USER:-config}", CONFIG_PASSWORD: "${CONFIG_PASSWORD:-config-secret}" }
+    restart: on-failure
+    depends_on: [config-server, postgres, kafka]
+  api-gateway:
+    profiles: ["apps"]
+    build: { context: ., args: { MODULE: api-gateway } }
+    environment: { SPRING_PROFILES_ACTIVE: docker, CONFIG_SERVER_URL: "http://config-server:8888", DB_USER: postgres, DB_PASSWORD: "${POSTGRES_PASSWORD:-postgres}", CONFIG_USER: "${CONFIG_USER:-config}", CONFIG_PASSWORD: "${CONFIG_PASSWORD:-config-secret}" }
+    ports: ["8080:8080"]        # the ONLY service port exposed to the outside world
+    restart: on-failure
+    depends_on: [config-server, order-service, inventory-service, redis, keycloak]
+volumes:
+  pgdata:

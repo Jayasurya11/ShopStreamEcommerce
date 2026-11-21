@@ -1,0 +1,9 @@
+server.port: 8083
+spring:
+  datasource.url: jdbc:postgresql://localhost:5432/payments
+  kafka.consumer.group-id: payment-service
+shop.outbox.poll-ms: 300
+shop.payment:
+  delay-ms: 1200          # simulated card-network latency
+  limit: 1000.00          # payments above this amount are declined (change it live: see README)
+management.server.port: 9083      # actuator + Prometheus on an internal-only port

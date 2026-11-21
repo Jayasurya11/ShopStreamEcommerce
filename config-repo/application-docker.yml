@@ -1,0 +1,4 @@
+# Applied to every service started with the "docker" profile (docker compose / Kubernetes)
+spring.kafka.bootstrap-servers: kafka:29092
+management.opentelemetry.tracing.export.otlp.endpoint: http://jaeger:4318/v1/traces
+logging.structured.format.console: ecs      # JSON logs (with trace ids) for log aggregation

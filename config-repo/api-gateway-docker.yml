@@ -1,0 +1,44 @@
+# Active with the 'docker' profile. Keep the routes in sync with api-gateway.yml (only the hosts differ).
+spring:
+  security.oauth2.resourceserver.jwt:
+    issuer-uri: http://localhost:8180/realms/shopstream   # must equal the 'iss' claim in the token
+    jwk-set-uri: http://keycloak:8080/realms/shopstream/protocol/openid-connect/certs   # container-to-container
+  data.redis.host: redis
+  cloud.gateway.server.webflux:
+    routes:
+      - id: order-stream            # long-lived SSE connection: no rate limiter, no circuit breaker / timeout
+        uri: http://order-service:8081
+        predicates:
+          - Path=/api/v1/orders/stream
+      - id: orders
+        uri: http://order-service:8081
+        predicates:
+          - Path=/api/v1/orders/**
+        filters:
+          - name: RequestRateLimiter
+            args:
+              key-resolver: "#{@userKeyResolver}"
+              redis-rate-limiter.replenishRate: 5      # 5 requests/second per user
+              redis-rate-limiter.burstCapacity: 10
+              redis-rate-limiter.requestedTokens: 1
+          - name: CircuitBreaker
+            args:
+              name: ordersCb
+              fallbackUri: forward:/fallback/orders
+              statusCodes: "500,502,503"
+      - id: products
+        uri: http://inventory-service:8082
+        predicates:
+          - Path=/api/v1/products/**
+        filters:
+          - name: RequestRateLimiter
+            args:
+              key-resolver: "#{@userKeyResolver}"
+              redis-rate-limiter.replenishRate: 20
+              redis-rate-limiter.burstCapacity: 40
+              redis-rate-limiter.requestedTokens: 1
+          - name: CircuitBreaker
+            args:
+              name: inventoryCb
+              fallbackUri: forward:/fallback/inventory
+              statusCodes: "500,502,503"

@@ -1,0 +1,23 @@
+groups:
+  - name: shopstream
+    rules:
+      - alert: ServiceDown
+        expr: up{env="local"} == 0 or up{env="docker"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "{{ $labels.instance }} is down" }
+      - alert: OutboxBacklog
+        expr: shop_outbox_pending > 50
+        for: 2m
+        labels: { severity: warning }
+        annotations: { summary: "{{ $labels.instance }} cannot publish events to Kafka (backlog {{ $value }})" }
+      - alert: HighErrorRate
+        expr: sum by (instance) (rate(http_server_requests_seconds_count{status=~"5.."}[5m])) > 0.5
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "{{ $labels.instance }} is returning 5xx responses" }
+      - alert: KafkaConsumerLag
+        expr: kafka_consumer_fetch_manager_records_lag_max > 100
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "{{ $labels.instance }} consumers are falling behind" }

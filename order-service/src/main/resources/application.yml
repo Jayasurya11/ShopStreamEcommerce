@@ -1,0 +1,10 @@
+spring:
+  application.name: order-service
+  config:
+    import: "configserver:${CONFIG_SERVER_URL:http://localhost:8888}"   # fail-fast: service will not start without it
+  datasource:                                  # credentials come from the environment, never from the config repo
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+  cloud.config:
+    username: ${CONFIG_USER:config}
+    password: ${CONFIG_PASSWORD:config-secret}

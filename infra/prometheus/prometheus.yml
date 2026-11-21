@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 15s
+rule_files: [ /etc/prometheus/alerts.yml ]
+scrape_configs:
+  - job_name: shopstream
+    metrics_path: /actuator/prometheus      # served on each service's internal management port
+    static_configs:
+      - targets: [ 'api-gateway:9080', 'order-service:9081', 'inventory-service:9082', 'payment-service:9083' ]
+        labels: { env: docker }
+      - targets: [ 'host.docker.internal:9080', 'host.docker.internal:9081', 'host.docker.internal:9082', 'host.docker.internal:9083' ]
+        labels: { env: local }              # services started with mvn spring-boot:run

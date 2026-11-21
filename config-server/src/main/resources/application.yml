@@ -1,0 +1,15 @@
+server.port: 8888
+spring:
+  application.name: config-server
+  profiles.active: git # native = local folder (default), git = Git repository
+  security.user:                              # clients must authenticate with HTTP Basic
+    name: ${CONFIG_USER:config}
+    password: ${CONFIG_PASSWORD:config-secret}
+  cloud.config.server:
+    git:                                      # used when CONFIG_BACKEND=git
+      uri: https://github.com/Jayasurya11/ConfigServerEcommerce
+      default-label: main              # personal access token, never commit it
+      clone-on-start: true                    # fail fast at startup if the repo is unreachable
+      force-pull: true                        # recover if the local clone gets out of sync
+      timeout: 10
+management.endpoints.web.exposure.include: health,info

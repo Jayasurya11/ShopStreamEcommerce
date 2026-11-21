@@ -1,0 +1,42 @@
+{
+  "realm": "shopstream",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "accessTokenLifespan": 300,
+  "roles": { "realm": [ { "name": "customer" }, { "name": "admin" } ] },
+  "clients": [
+    {
+      "clientId": "shopstream-web",
+      "name": "ShopStream web app",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [ "http://localhost:5173/*" ],
+      "webOrigins": [ "http://localhost:5173" ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "alice", "email": "alice@example.com", "firstName": "Alice", "lastName": "Demo",
+      "enabled": true, "emailVerified": true,
+      "credentials": [ { "type": "password", "value": "alice123", "temporary": false } ],
+      "realmRoles": [ "customer" ]
+    },
+    {
+      "username": "admin-user", "email": "admin@example.com", "firstName": "Ada", "lastName": "Admin",
+      "enabled": true, "emailVerified": true,
+      "credentials": [ { "type": "password", "value": "admin123", "temporary": false } ],
+      "realmRoles": [ "customer", "admin" ]
+    }
+  ]
+}
