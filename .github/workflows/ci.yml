@@ -15,7 +15,7 @@ jobs:
         with: { distribution: temurin, java-version: 25, cache: maven }
       - name: Build, unit tests, integration tests (Testcontainers needs Docker, which the runner has)
         run: mvn -B verify
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage-and-test-reports
